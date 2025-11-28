@@ -8,7 +8,7 @@
 using Eloquent::ML::Port::DecisionTree;
 DecisionTree clf;
 
-// 20x4 LCD (if nothing shows, try 0x3F instead of 0x27)
+// LCD setup (20x4)
 LiquidCrystal_I2C lcd(0x27, 20, 4);
 
 // ---- Helper: read a number from Serial safely ----
@@ -37,11 +37,7 @@ float readNumber(const char* label) {
 }
 
 // ---- Helper: convert plan_key into 3 short LCD lines ----
-// mode  = type of training
-// freq  = how many days per week
-// dur   = minutes per session
 void interpretPlan(const char* key, const char*& mode, const char*& freq, const char*& dur) {
-  // Defaults (fallback)
   mode = "Custom training";
   freq = "3-4 days / week";
   dur  = "30-45 min / day";
@@ -78,6 +74,19 @@ void interpretPlan(const char* key, const char*& mode, const char*& freq, const 
   }
 }
 
+// ---- Helper: BMI category calculation ----
+const char* getBMICategory(float bmi) {
+  if (bmi < 18.5) {
+    return "Underweight";
+  } else if (bmi >= 18.5 && bmi < 24.9) {
+    return "Normal weight";
+  } else if (bmi >= 25 && bmi < 29.9) {
+    return "Overweight";
+  } else {
+    return "Obese";
+  }
+}
+
 // ---- Helper: standby / greeting screen & wait for "1" ----
 void waitForUserToStart() {
   lcd.clear();
@@ -107,7 +116,6 @@ void waitForUserToStart() {
         Serial.println("Starting new plan...");
         break;
       }
-      // ignore other characters
     }
   }
 
@@ -133,7 +141,6 @@ void waitForUserToStart() {
 
 void setup() {
   Serial.begin(9600);
-
   lcd.init();
   lcd.backlight();
 
@@ -141,10 +148,19 @@ void setup() {
   waitForUserToStart();
 }
 
+// ---- Helper: read a number from Serial safely with input validation ----
+float readValidInput(const char* label, const char* errorMessage, float minValue) {
+  float val = 0;
+  while (val <= minValue) {
+    val = readNumber(label);
+    if (val <= minValue) {
+      Serial.println(errorMessage);
+    }
+  }
+  return val;
+}
+
 void loop() {
-  // For each new user: show greeting + wait for "1" to start
-  // (after the first time, setup() is not called again,
-  //  so we call the standby function at the top of loop)
   waitForUserToStart();
 
   // ---- INPUT PHASE (with LCD hints + Serial input) ----
@@ -155,15 +171,15 @@ void loop() {
   lcd.print("Step 1: Age");
   lcd.setCursor(0, 1);
   lcd.print("Enter in Serial...");
-  float age = readNumber("Enter Age (years)");
+  float age = readValidInput("Enter Age (years)", "Age must be greater than 0", 0);
 
   // 3.2 Height
   lcd.clear();
   lcd.setCursor(0, 0);
   lcd.print("Step 2: Height");
   lcd.setCursor(0, 1);
-  lcd.print("in meters (e.g. 1.70)");
-  float height = readNumber("Enter Height (m)");
+  lcd.print("in meters (eg. 1.70)");
+  float height = readValidInput("Enter Height (m)", "Height must be greater than 0", 0);
 
   // 3.3 Weight
   lcd.clear();
@@ -171,7 +187,7 @@ void loop() {
   lcd.print("Step 3: Weight");
   lcd.setCursor(0, 1);
   lcd.print("in kg (e.g. 70)");
-  float weight = readNumber("Enter Weight (kg)");
+  float weight = readValidInput("Enter Weight (kg)", "Weight must be greater than 0", 0);
 
   // 3.4 Gender
   lcd.clear();
@@ -179,7 +195,7 @@ void loop() {
   lcd.print("Step 4: Gender");
   lcd.setCursor(0, 1);
   lcd.print("0=Female  1=Male");
-  int gender = (int) readNumber("Enter Gender (0=F,1=M)");
+  int gender = (int) readValidInput("Enter Gender (0=F,1=M)", "Enter 0 or 1", -1);
 
   // 3.5 Goal
   lcd.clear();
@@ -187,7 +203,7 @@ void loop() {
   lcd.print("Step 5: Goal");
   lcd.setCursor(0, 1);
   lcd.print("0=Fat loss 1=Muscle");
-  int goal = (int) readNumber("Enter Goal (0=Fat,1=Mus)");
+  int goal = (int) readValidInput("Enter Goal (0=Fat,1=Mus)", "Enter 0 or 1", -1);
 
   // 4) Motivation message
   lcd.clear();
@@ -211,8 +227,17 @@ void loop() {
   lcd.print("fitness plan...");
   lcd.setCursor(0, 2);
   lcd.print("BMI: ");
-  lcd.print(bmi, 1);
-  delay(1500);
+  lcd.print(bmi, 1);  // Show BMI value with 1 decimal point
+
+  // Get the BMI category
+  const char* bmiCategory = getBMICategory(bmi);
+
+  // Display the BMI category (on row 3 or 4)
+  lcd.setCursor(0, 3);  // Position on the 4th row
+  lcd.print("Category: ");
+  lcd.print(bmiCategory);  // Display BMI category (Underweight, Normal, etc.)
+
+  delay(3000);  // Keep the results on screen for 3 seconds
 
   // Prepare features: [Age, gender_enc, BMI, goal_enc]
   float x[4] = {
@@ -226,10 +251,7 @@ void loop() {
   int idx = clf.predict(x);
 
   const int numClasses = sizeof(PLAN_KEY_TABLE) / sizeof(PLAN_KEY_TABLE[0]);
-  const char* planKey = "UNKNOWN";
-  if (idx >= 0 && idx < numClasses) {
-    planKey = PLAN_KEY_TABLE[idx];
-  }
+  const char* planKey = PLAN_KEY_TABLE[idx];
 
   // Interpret plan into 3 short lines
   const char* mode;
@@ -243,13 +265,13 @@ void loop() {
   lcd.print("Your results say:");
 
   lcd.setCursor(0, 1);
-  lcd.print(mode);   // e.g. "Strength (moderate)"
+  lcd.print(mode);   // e.g., "Strength (moderate)"
 
   lcd.setCursor(0, 2);
-  lcd.print(freq);   // e.g. "3-4 days / week"
+  lcd.print(freq);   // e.g., "3-4 days / week"
 
   lcd.setCursor(0, 3);
-  lcd.print(dur);    // e.g. "30-45 min / day"
+  lcd.print(dur);    // e.g., "30-45 min / day"
 
   // Also log details to Serial for checking
   Serial.println("\n====== Fitness AI Result ======");
@@ -269,7 +291,7 @@ void loop() {
   Serial.println("================================\n");
 
   // Hold result on screen for 10 seconds
-  delay(10000);
+  delay(15000);
 
   // Clear LCD; next iteration of loop() goes back to waitForUserToStart()
   lcd.clear();
