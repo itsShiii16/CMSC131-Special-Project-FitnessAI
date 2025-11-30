@@ -78,11 +78,14 @@ void interpretPlan(const char* key, const char*& mode, const char*& freq, const 
 const char* getBMICategory(float bmi) {
   if (bmi < 18.5) {
     return "Underweight";
-  } else if (bmi >= 18.5 && bmi < 24.9) {
+  } 
+  else if (bmi >= 18.5 && bmi < 24.9) {
     return "Normal weight";
-  } else if (bmi >= 25 && bmi < 29.9) {
+  } 
+  else if (bmi >= 25 && bmi < 29.9) {
     return "Overweight";
-  } else {
+  } 
+  else {
     return "Obese";
   }
 }
@@ -148,7 +151,7 @@ void setup() {
   waitForUserToStart();
 }
 
-// ---- Helper: read a number from Serial safely with input validation ----
+// ---- Helper: read a positive number (age/height/weight) ----
 float readValidInput(const char* label, const char* errorMessage, float minValue) {
   float val = 0;
   while (val <= minValue) {
@@ -160,7 +163,45 @@ float readValidInput(const char* label, const char* errorMessage, float minValue
   return val;
 }
 
+// ---- Helper: strictly read 0 or 1 (for gender, goal) ----
+int readBinaryChoice(const char* label, const char* errorMessage) {
+  int val = -1;
+
+  while (val != 0 && val != 1) {
+    Serial.print(label);
+    Serial.print(": ");
+
+    // Clear buffer
+    while (Serial.available()) {
+      Serial.read();
+    }
+
+    // Wait for input
+    while (!Serial.available()) {
+      // wait
+    }
+
+    String input = Serial.readStringUntil('\n');
+    input.trim();
+
+    if (input == "0") {
+      val = 0;
+    } 
+    else if (input == "1") {
+      val = 1;
+    } 
+    else {
+      Serial.println(errorMessage);
+      val = -1;
+    }
+  }
+
+  Serial.println(val);   // echo back
+  return val;
+}
+
 void loop() {
+  // For each new user, go back to greeting and wait for "1"
   waitForUserToStart();
 
   // ---- INPUT PHASE (with LCD hints + Serial input) ----
@@ -195,7 +236,7 @@ void loop() {
   lcd.print("Step 4: Gender");
   lcd.setCursor(0, 1);
   lcd.print("0=Female  1=Male");
-  int gender = (int) readValidInput("Enter Gender (0=F,1=M)", "Enter 0 or 1", -1);
+  int gender = readBinaryChoice("Enter Gender (0=F,1=M)", "Invalid input! Enter 0 or 1.");
 
   // 3.5 Goal
   lcd.clear();
@@ -203,7 +244,7 @@ void loop() {
   lcd.print("Step 5: Goal");
   lcd.setCursor(0, 1);
   lcd.print("0=Fat loss 1=Muscle");
-  int goal = (int) readValidInput("Enter Goal (0=Fat,1=Mus)", "Enter 0 or 1", -1);
+  int goal = readBinaryChoice("Enter Goal (0=Fat,1=Mus)", "Invalid input! Enter 0 or 1.");
 
   // 4) Motivation message
   lcd.clear();
@@ -232,10 +273,10 @@ void loop() {
   // Get the BMI category
   const char* bmiCategory = getBMICategory(bmi);
 
-  // Display the BMI category (on row 3 or 4)
-  lcd.setCursor(0, 3);  // Position on the 4th row
+  // Display the BMI category (on row 4)
+  lcd.setCursor(0, 3);
   lcd.print("Category: ");
-  lcd.print(bmiCategory);  // Display BMI category (Underweight, Normal, etc.)
+  lcd.print(bmiCategory);  // Underweight / Normal / Overweight / Obese
 
   delay(3000);  // Keep the results on screen for 3 seconds
 
@@ -280,6 +321,7 @@ void loop() {
   Serial.print("Height: "); Serial.println(height, 2);
   Serial.print("Weight: "); Serial.println(weight, 1);
   Serial.print("BMI: ");    Serial.println(bmi, 1);
+  Serial.print("BMI Category: "); Serial.println(bmiCategory);
   Serial.print("Plan key: ");
   Serial.println(planKey);
   Serial.print("Mode: ");
@@ -290,7 +332,7 @@ void loop() {
   Serial.println(dur);
   Serial.println("================================\n");
 
-  // Hold result on screen for 10 seconds
+  // Hold result on screen for 15 seconds
   delay(15000);
 
   // Clear LCD; next iteration of loop() goes back to waitForUserToStart()
